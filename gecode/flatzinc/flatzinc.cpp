@@ -43,6 +43,7 @@
 
 #include <vector>
 #include <string>
+#include <set>
 using namespace std;
 
 namespace Gecode { namespace FlatZinc {
@@ -206,7 +207,7 @@ namespace Gecode { namespace FlatZinc {
 #endif
 
   FlatZincSpace::FlatZincSpace(bool share, FlatZincSpace& f)
-    : Space(share, f), _solveAnnotations(NULL), iv_boolalias(NULL) {
+    : Space(share, f) {
       _optVar = f._optVar;
       _method = f._method;
       iv.update(*this, share, f.iv);
@@ -217,11 +218,61 @@ namespace Gecode { namespace FlatZinc {
       sv.update(*this, share, f.sv);
       setVarCount = f.setVarCount;
 #endif
+      // copy introduced variables
+      iv_introduced = std::vector<bool>(intVarCount);
+      iv_introduced = f.iv_introduced;
+      int iv_boolaliasSize = intVarCount+(intVarCount==0?1:0);
+      iv_boolalias = alloc<int>(iv_boolaliasSize);
+      iv_boolalias = f.iv_boolalias;
+      bv_introduced = std::vector<bool>(boolVarCount);
+      bv_introduced = f.bv_introduced;
+#ifdef GECODE_HAS_SET_VARS
+      sv_introduced = std::vector<bool>(setVarCount);
+      sv_introduced = f.sv_introduced;
+#endif
+
+      // copy solve annotations
+      if (f._solveAnnotations) {
+        if (share) {
+          _solveAnnotations = f._solveAnnotations;
+        } else {
+          _solveAnnotations = f._solveAnnotations->clone();
+        }
+      } else {
+        _solveAnnotations = NULL;
+      }
+
+      // copy constraint store
+      constraintCount = f.constraintCount;
+
+      std::map<int,ConExpr*>::iterator cit = f.constraintConExprStore.begin();
+      while (cit != f.constraintConExprStore.end()) {
+        if (share) {
+          constraintConExprStore[cit->first] = f.constraintConExprStore[cit->first];
+        } else {
+          constraintConExprStore[cit->first] = f.constraintConExprStore[cit->first]->clone();
+        }
+        cit++;
+      }
+
+      std::map<int,AST::Node*>::iterator ait = f.constraintASTNodeStore.begin();
+      while (ait != f.constraintASTNodeStore.end()) {
+        if (f.constraintASTNodeStore[ait->first]) {
+          if (share) {
+            constraintASTNodeStore[ait->first] = f.constraintASTNodeStore[ait->first];
+          } else {
+            constraintASTNodeStore[ait->first] = f.constraintASTNodeStore[ait->first]->clone();
+          }
+        } else {
+          constraintASTNodeStore[ait->first] = NULL;
+        }
+        ait++;
+      }
     }
   
   FlatZincSpace::FlatZincSpace(void)
   : intVarCount(-1), boolVarCount(-1), setVarCount(-1), _optVar(-1),
-    _solveAnnotations(NULL) {}
+    _solveAnnotations(NULL), constraintCount(-1) {}
 
   void
   FlatZincSpace::init(int intVars, int boolVars,
@@ -242,6 +293,9 @@ namespace Gecode { namespace FlatZinc {
     sv = SetVarArray(*this, setVars);
     sv_introduced = std::vector<bool>(setVars);
 #endif
+    constraintCount = 0;
+    std::map<int,ConExpr*> constraintConExprStore;
+    std::map<int,AST::Node*> constraintASTNodeStore;
   }
 
   void
@@ -328,6 +382,51 @@ namespace Gecode { namespace FlatZinc {
       throw FlatZinc::Error("Gecode", e.what());
     } catch (AST::TypeError& e) {
       throw FlatZinc::Error("Type error", e.what());
+    }
+  }
+
+  void
+  FlatZincSpace::storeConstraint(const ConExpr& ce, AST::Node* ann) {
+    constraintConExprStore[constraintCount] = ce.clone();
+    if (ann) {
+      constraintASTNodeStore[constraintCount] = ann->clone();
+    } else {
+      constraintASTNodeStore[constraintCount] = NULL;
+    }
+    constraintCount++;
+  }
+
+  void FlatZincSpace::postStoredConstraints() {
+    for (int i = 0; i < constraintCount; i++) {
+      postConstraint(*constraintConExprStore[i], constraintASTNodeStore[i]);
+    }
+  }
+
+  void FlatZincSpace::postStoredConstraint(int i) {
+    if (constraintConExprStore[i]) {
+      postConstraint(*constraintConExprStore[i], constraintASTNodeStore[i]);
+    }
+  }
+
+  void FlatZincSpace::postStoredConstraints(set<int> c) {
+    set<int>::iterator it = c.begin();
+
+    while (it != c.end()) {
+      postStoredConstraint(*it);
+      it++;
+    }
+  }
+
+  void FlatZincSpace::deleteStoredConstraints(set<int> c) {
+    set<int>::iterator it = c.begin();
+
+    while (it != c.end()) {
+      delete constraintConExprStore[*it];
+      delete constraintASTNodeStore[*it];
+      constraintConExprStore.erase(*it);
+      constraintASTNodeStore.erase(*it);
+      it++;
+      constraintCount--;
     }
   }
 
@@ -547,7 +646,6 @@ namespace Gecode { namespace FlatZinc {
   }
 
   FlatZincSpace::~FlatZincSpace(void) {
-    delete _solveAnnotations;
   }
 
 #ifdef GECODE_HAS_GIST
@@ -712,6 +810,31 @@ namespace Gecode { namespace FlatZinc {
     }
   }
 
+  template<template<class> class Engine>
+  bool 
+  FlatZincSpace::isSatisfiableRunEngine(const FlatZincQuickxplainOptions& opt) {
+    Search::Options o;
+    o.c_d = opt.c_d();
+    o.a_d = opt.a_d();
+    o.threads = opt.threads();
+    Driver::Cutoff::installCtrlHandler(true);
+    Engine<FlatZincSpace> se(this,o);
+
+    FlatZincSpace* sol = NULL;
+    if (FlatZincSpace* next_sol = se.next()) {
+      sol = next_sol;
+    }
+    
+    bool foundSolution = false;
+    if (sol) {
+      foundSolution = true;
+    }
+
+    delete sol;
+
+    return foundSolution;
+  }
+
 #ifdef GECODE_HAS_QT
   void
   FlatZincSpace::branchWithPlugin(AST::Node* ann) {
@@ -764,6 +887,23 @@ namespace Gecode { namespace FlatZinc {
       runEngine<DFS>(out,p,opt,t_total);
       break;
     }
+  }
+
+  bool
+  FlatZincSpace::isSatisfiable(const FlatZincQuickxplainOptions& opt) {
+    switch (_method) {
+    case MIN:
+    case MAX:
+      if (opt.search() == FlatZincOptions::FZ_SEARCH_BAB)
+        return isSatisfiableRunEngine<BAB>(opt);
+      else
+        return isSatisfiableRunEngine<Restart>(opt);
+      break;
+    case SAT:
+      return isSatisfiableRunEngine<DFS>(opt);
+      break;
+    }
+    return false;
   }
 
   void

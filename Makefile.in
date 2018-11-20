@@ -653,7 +653,12 @@ FLATZINCEXESRC  = $(FLATZINCEXESRC0:%=tools/flatzinc/%)
 FLATZINCEXEOBJ  = $(FLATZINCEXESRC:%.cpp=%$(OBJSUFFIX))
 FLATZINCEXE	= tools/flatzinc/fz$(EXESUFFIX)
 
-FLATZINCALLSRC	= $(FLATZINCSRC) $(FLATZINCEXESRC)
+FLATZINCQXEXESRC0 = fz-qx.cpp
+FLATZINCQXEXESRC  = $(FLATZINCQXEXESRC0:%=tools/flatzinc/%)
+FLATZINCQXEXEOBJ  = $(FLATZINCQXEXESRC:%.cpp=%$(OBJSUFFIX))
+FLATZINCQXEXE	= tools/flatzinc/fz-qx$(EXESUFFIX)
+
+FLATZINCALLSRC	= $(FLATZINCSRC) $(FLATZINCEXESRC) $(FLATZINCQXEXESRC)
 
 FLATZINCBUILDDIRS = gecode/flatzinc tools/flatzinc
 
@@ -813,7 +818,7 @@ LIBLIBTARGETS =
 PDBTARGETS =
 endif
 
-EXETARGETS = $(FLATZINCEXE)
+EXETARGETS = $(FLATZINCEXE) $(FLATZINCQXEXE)
 
 #
 # Testing
@@ -1380,13 +1385,18 @@ $(TESTEXE): $(TESTOBJ) $(ALLLIB)
 
 .PHONY: flatzinc
 ifeq "@enable_flatzinc@" "yes"
-flatzinc: $(FLATZINCEXE)
+flatzinc: $(FLATZINCEXE) $(FLATZINCQXEXE)
 else
 flatzinc:
 endif
 
 $(FLATZINCEXE): $(FLATZINCEXEOBJ) $(ALLLIB) 
 	$(CXX) @EXEOUTPUT@$@ $(FLATZINCEXEOBJ) $(DLLPATH) $(CXXFLAGS) \
+	$(LINKALL) $(LINKSTATICQT) $(GLDFLAGS)
+	$(MANIFEST) -manifest $@.manifest -outputresource:$@\;1
+
+$(FLATZINCQXEXE): $(FLATZINCQXEXEOBJ) $(ALLLIB) 
+	$(CXX) @EXEOUTPUT@$@ $(FLATZINCQXEXEOBJ) $(DLLPATH) $(CXXFLAGS) \
 	$(LINKALL) $(LINKSTATICQT) $(GLDFLAGS)
 	$(MANIFEST) -manifest $@.manifest -outputresource:$@\;1
 
@@ -1704,6 +1714,8 @@ veryclean: clean
 		 $(TESTEXE:%=%.manifest)
 	$(RMF) $(FLATZINCEXE) $(FLATZINCEXE:%.exe=%.pdb) \
 		$(FLATZINCEXE:%.exe=%.ilk) $(FLATZINCEXE:%=%.manifest)
+	$(RMF) $(FLATZINCQXEXE) $(FLATZINCQXEXE:%.exe=%.pdb) \
+		$(FLATZINCQXEXE:%.exe=%.ilk) $(FLATZINCQXEXE:%=%.manifest)
 	$(RMF) doc GecodeReference.chm ChangeLog changelog.hh doxygen.hh
 	$(RMF) $(ALLOBJ:%$(OBJSUFFIX)=%.gcno) $(TESTOBJ:%$(OBJSUFFIX)=%.gcno)
 	$(RMF) $(ALLOBJ:%$(OBJSUFFIX)=%.gcda) $(TESTOBJ:%$(OBJSUFFIX)=%.gcda)

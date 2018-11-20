@@ -47,6 +47,7 @@
 #endif
 
 #include <map>
+#include <set>
 
 /*
  * Support for DLLs under Windows
@@ -242,6 +243,62 @@ namespace Gecode { namespace FlatZinc {
   };
 
   /**
+   * \brief %Options for running %FlatZinc models with QuickXplain
+   *
+   */
+  class FlatZincQuickxplainOptions : public Gecode::BaseOptions {
+  protected:
+      /// \name Search options
+      //@{
+      Gecode::Driver::DoubleOption      _threads;   ///< How many threads to use
+      Gecode::Driver::DoubleOption      _parallel; ///< Use all cores
+      Gecode::Driver::BoolOption        _free; ///< Use free search
+      Gecode::Driver::StringOption      _search; ///< Search engine variant
+      Gecode::Driver::UnsignedIntOption _c_d;       ///< Copy recomputation distance
+      Gecode::Driver::UnsignedIntOption _a_d;       ///< Adaptive recomputation distance
+      //@}
+    
+  public:
+    enum SearchOptions {
+      FZ_SEARCH_BAB,    //< Branch-and-bound search
+      FZ_SEARCH_RESTART //< Restart search
+    };
+    /// Constructor
+    FlatZincQuickxplainOptions(const char* s)
+    : Gecode::BaseOptions(s),
+      _threads("-threads","number of threads (0 = #processing units)",
+               Gecode::Search::Config::threads),
+      _parallel("--parallel", "equivalent to -threads",
+               Gecode::Search::Config::threads),
+      _free("--free", "no need to follow search-specification"),
+      _search("-search","search engine variant", FZ_SEARCH_BAB),
+      _c_d("-c-d","recomputation commit distance",Gecode::Search::Config::c_d),
+      _a_d("-a-d","recomputation adaption distance",Gecode::Search::Config::a_d) {
+      _search.add(FZ_SEARCH_BAB, "bab");
+      _search.add(FZ_SEARCH_RESTART, "restart");
+      add(_threads); add(_c_d); add(_a_d);
+      add(_parallel);
+      add(_free);
+      add(_search);
+    }
+
+    void parse(int& argc, char* argv[]) {
+      Gecode::BaseOptions::parse(argc,argv);
+      if (_parallel.value() != Gecode::Search::Config::threads &&
+          _threads.value() == Gecode::Search::Config::threads)
+        _threads.value(_parallel.value());
+    }
+  
+    double threads(void) const { return _threads.value(); }
+    bool free(void) const { return _free.value(); }
+    SearchOptions search(void) const {
+      return static_cast<SearchOptions>(_search.value());
+    }
+    unsigned int c_d(void) const { return _c_d.value(); }
+    unsigned int a_d(void) const { return _a_d.value(); }
+  };
+
+  /**
    * \brief A space that can be initialized with a %FlatZinc model
    *
    */
@@ -277,6 +334,11 @@ namespace Gecode { namespace FlatZinc {
     void
     runEngine(std::ostream& out, const Printer& p, 
               const FlatZincOptions& opt, Gecode::Support::Timer& t_total);
+
+    template<template<class> class Engine>
+    bool 
+    isSatisfiableRunEngine(const FlatZincQuickxplainOptions& opt);
+
     void
     branchWithPlugin(AST::Node* ann);
   public:
@@ -296,6 +358,17 @@ namespace Gecode { namespace FlatZinc {
     /// Indicates whether a set variable is introduced by mzn2fzn
     std::vector<bool> sv_introduced;
 #endif
+
+    /// Indicates whether parse() should post or store constraints
+    bool postDuringParse;
+
+    /// Maps to store constraints
+    std::map<int,ConExpr*> constraintConExprStore;
+    std::map<int,AST::Node*> constraintASTNodeStore;
+
+    /// Counter to keep track of constraint order
+    int constraintCount;
+
     /// Construct empty space
     FlatZincSpace(void);
   
@@ -318,6 +391,21 @@ namespace Gecode { namespace FlatZinc {
   
     /// Post a constraint specified by \a ce
     void postConstraint(const ConExpr& ce, AST::Node* annotation);
+
+    /// Store a constraint specified by \a ce
+    void storeConstraint(const ConExpr& ce, AST::Node* annotation);
+
+    /// Post all stored constraints
+    void postStoredConstraints();
+
+    /// Post a particular constraint
+    void postStoredConstraint(int i);
+
+    /// Post stored constraints from set
+    void postStoredConstraints(std::set<int> c);
+  
+    /// Delete stored constraints from set
+    void deleteStoredConstraints(std::set<int> c);
   
     /// Post the solve item
     void solve(AST::Array* annotation);
@@ -330,6 +418,8 @@ namespace Gecode { namespace FlatZinc {
     void run(std::ostream& out, const Printer& p, 
              const FlatZincOptions& opt, Gecode::Support::Timer& t_total);
   
+    bool isSatisfiable(const FlatZincQuickxplainOptions& opt);
+
     /// Produce output on \a out using \a p
     void print(std::ostream& out, const Printer& p) const;
 
@@ -385,7 +475,7 @@ namespace Gecode { namespace FlatZinc {
   GECODE_FLATZINC_EXPORT
   FlatZincSpace* parse(const std::string& fileName,
                        Printer& p, std::ostream& err = std::cerr,
-                       FlatZincSpace* fzs=NULL);
+                       FlatZincSpace* fzs=NULL, bool post = true);
 
   /**
    * \brief Parse FlatZinc from \a is into \a fzs and return it.
@@ -395,7 +485,7 @@ namespace Gecode { namespace FlatZinc {
   GECODE_FLATZINC_EXPORT
   FlatZincSpace* parse(std::istream& is,
                        Printer& p, std::ostream& err = std::cerr,
-                       FlatZincSpace* fzs=NULL);
+                       FlatZincSpace* fzs=NULL, bool post = true);
 
 }}
 

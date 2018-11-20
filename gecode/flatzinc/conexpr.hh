@@ -50,8 +50,12 @@ namespace Gecode { namespace FlatZinc {
     std::string id;
     /// Constraint arguments
     AST::Array* args;
+    /// Default constructor
+    ConExpr();
     /// Constructor
     ConExpr(const std::string& id0, AST::Array* args0);
+    /// Clone
+    ConExpr* clone() const;
     /// Return argument \a i
     AST::Node* operator[](int i) const;
     /// Destructor
@@ -59,8 +63,23 @@ namespace Gecode { namespace FlatZinc {
   };
 
   forceinline
+  ConExpr::ConExpr() {}
+
+  forceinline
   ConExpr::ConExpr(const std::string& id0, AST::Array* args0)
     : id(id0), args(args0) {}
+
+  forceinline ConExpr*
+  ConExpr::clone() const {
+    ConExpr* ceClone = new ConExpr();
+    ceClone->id = id;
+    ceClone->args = new AST::Array(args->a.size());
+    for (unsigned int i = 0; i < args->a.size(); i++) {
+      ceClone->args->a[i] = args->a[i]->clone();
+    }
+    
+    return ceClone;
+  }
 
   forceinline AST::Node*
   ConExpr::operator[](int i) const { return args->a[i]; }

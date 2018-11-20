@@ -214,7 +214,11 @@ void initfg(ParserState* pp) {
     if (!pp->hadError) {
       try {
         assert(pp->domainConstraints[i]->args->a.size() == 2);
-        pp->fg->postConstraint(*pp->domainConstraints[i], NULL);
+        if (pp->fg->postDuringParse) {
+          pp->fg->postConstraint(*pp->domainConstraints[i], NULL);
+        } else {
+          pp->fg->storeConstraint(*pp->domainConstraints[i], NULL);
+        }
         delete pp->domainConstraints[i];
       } catch (Gecode::FlatZinc::Error& e) {
         yyerror(pp, e.toString().c_str());        
@@ -270,8 +274,8 @@ AST::Node* arrayOutput(AST::Call* ann) {
 
 namespace Gecode { namespace FlatZinc {
 
-  FlatZincSpace* parse(const std::string& filename, Printer& p, std::ostream& err,
-                       FlatZincSpace* fzs) {
+  FlatZincSpace* parse(const std::string& filename, Printer& p,
+                       std::ostream& err, FlatZincSpace* fzs, bool post) {
 #ifdef HAVE_MMAP
     int fd;
     char* data;
@@ -294,6 +298,7 @@ namespace Gecode { namespace FlatZinc {
     if (fzs == NULL) {
       fzs = new FlatZincSpace();
     }
+    fzs->postDuringParse = post;
     ParserState pp(data, sbuf.st_size, err, fzs);
 #else
     std::ifstream file;
@@ -307,6 +312,7 @@ namespace Gecode { namespace FlatZinc {
     if (fzs == NULL) {
       fzs = new FlatZincSpace();
     }
+    fzs->postDuringParse = post;
     ParserState pp(s, err, fzs);
 #endif
     yylex_init(&pp.yyscanner);
@@ -320,14 +326,15 @@ namespace Gecode { namespace FlatZinc {
     return pp.hadError ? NULL : pp.fg;
   }
 
-  FlatZincSpace* parse(std::istream& is, Printer& p, std::ostream& err,
-                       FlatZincSpace* fzs) {
+  FlatZincSpace* parse(std::istream& is, Printer& p, std::ostream& err, 
+                       FlatZincSpace* fzs, bool post) {
     std::string s = string(istreambuf_iterator<char>(is),
                            istreambuf_iterator<char>());
 
     if (fzs == NULL) {
       fzs = new FlatZincSpace();
     }
+    fzs->postDuringParse = post;
     ParserState pp(s, err, fzs);
     yylex_init(&pp.yyscanner);
     yyset_extra(&pp, pp.yyscanner);
@@ -1177,7 +1184,11 @@ constraint_item :
         if (!pp->hadError) {
           ConExpr c($2, $4);
           try {
-            pp->fg->postConstraint(c, $6);
+            if (pp->fg->postDuringParse) {
+              pp->fg->postConstraint(c, $6);
+            } else {
+              pp->fg->storeConstraint(c, $6);
+            }
           } catch (Gecode::FlatZinc::Error& e) {
             yyerror(pp, e.toString().c_str());
           }

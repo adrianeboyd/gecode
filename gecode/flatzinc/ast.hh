@@ -132,6 +132,9 @@ namespace Gecode { namespace FlatZinc { namespace AST {
     
     /// Output string representation
     virtual void print(std::ostream&) = 0;
+
+    /// Clone
+    virtual Node* clone() = 0;
   };
 
   /// Boolean literal node
@@ -142,6 +145,9 @@ namespace Gecode { namespace FlatZinc { namespace AST {
     virtual void print(std::ostream& os) {
       os << "b(" << (b ? "true" : "false") << ")";
     }
+    virtual BoolLit* clone() {
+      return new BoolLit(b);
+    }
   };
   /// Integer literal node
   class IntLit : public Node {
@@ -151,6 +157,9 @@ namespace Gecode { namespace FlatZinc { namespace AST {
     virtual void print(std::ostream& os) {
       os << "i("<<i<<")";
     }
+    virtual IntLit* clone() {
+      return new IntLit(i);
+    }
   };
   /// Float literal node
   class FloatLit : public Node {
@@ -159,6 +168,9 @@ namespace Gecode { namespace FlatZinc { namespace AST {
     FloatLit(double d0) : d(d0) {}
     virtual void print(std::ostream& os) {
       os << "f("<<d<<")";
+    }
+    virtual FloatLit* clone() {
+      return new FloatLit(d);
     }
   };
   /// %Set literal node
@@ -176,6 +188,13 @@ namespace Gecode { namespace FlatZinc { namespace AST {
     virtual void print(std::ostream& os) {
       os << "s()";
     }
+    virtual SetLit* clone() {
+      if (interval) {
+        return new SetLit(min, max);
+      } else {
+        return new SetLit(s);
+      }
+    }
   };
   
   /// Variable node base class
@@ -191,6 +210,9 @@ namespace Gecode { namespace FlatZinc { namespace AST {
     virtual void print(std::ostream& os) {
       os << "xb("<<i<<")";
     }
+    virtual BoolVar* clone() {
+      return new BoolVar(i);
+    }
   };
   /// Integer variable node
   class IntVar : public Var {
@@ -198,6 +220,9 @@ namespace Gecode { namespace FlatZinc { namespace AST {
     IntVar(int i0) : Var(i0) {}
     virtual void print(std::ostream& os) {
       os << "xi("<<i<<")";
+    }
+    virtual IntVar* clone() {
+      return new IntVar(i);
     }
   };
   /// Float variable node
@@ -207,6 +232,9 @@ namespace Gecode { namespace FlatZinc { namespace AST {
     virtual void print(std::ostream& os) {
       os << "xf("<<i<<")";
     }
+    virtual FloatVar* clone() {
+      return new FloatVar(i);
+    }
   };
   /// %Set variable node
   class SetVar : public Var {
@@ -214,6 +242,9 @@ namespace Gecode { namespace FlatZinc { namespace AST {
     SetVar(int i0) : Var(i0) {}
     virtual void print(std::ostream& os) {
       os << "xs("<<i<<")";
+    }
+    virtual SetVar* clone() {
+      return new SetVar(i);
     }
   };
   
@@ -239,6 +270,14 @@ namespace Gecode { namespace FlatZinc { namespace AST {
       for (int i=a.size(); i--;)
         delete a[i];
     }
+    virtual Array* clone() {
+      std::vector<Node*> cloneA(a.size());
+      for (unsigned int i = 0; i < a.size(); i++) {
+        cloneA[i] = a[i]->clone();
+      }
+
+      return new Array(cloneA);
+    }
   };
 
   /// %Node representing a function call
@@ -258,6 +297,10 @@ namespace Gecode { namespace FlatZinc { namespace AST {
         throw TypeError("arity mismatch");
       return a;
     }
+    virtual Call* clone() {
+      Node* cloneArgs = args->clone();
+      return new Call(id, cloneArgs);
+    }
   };
 
   /// %Node representing an array access
@@ -274,6 +317,11 @@ namespace Gecode { namespace FlatZinc { namespace AST {
       idx->print(os);
       os << "]";
     }
+    virtual ArrayAccess* clone() {
+      Node* cloneA = a->clone();
+      Node* cloneIdx = idx->clone();
+      return new ArrayAccess(cloneA, cloneIdx);
+    }
   };
 
   /// %Node representing an atom
@@ -284,6 +332,9 @@ namespace Gecode { namespace FlatZinc { namespace AST {
     virtual void print(std::ostream& os) {
       os << id;
     }
+    virtual Atom* clone () {
+      return new Atom(id);
+    }
   };
 
   /// %String node
@@ -293,6 +344,9 @@ namespace Gecode { namespace FlatZinc { namespace AST {
     String(const std::string& s0) : s(s0) {}
     virtual void print(std::ostream& os) {
       os << "s(\"" << s << "\")";
+    }
+    virtual String* clone() {
+      return new String(s);
     }
   };
   
